@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Synchronization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            background-color: #f1f1f1;
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+        }
+        #data-container {
+            white-space: pre-wrap;
+            padding: 60px 10px 0; 
+            max-height: calc(100vh - 60px);
+            overflow-y: auto;
+        }
+        .navigation {
+            margin-top: 10px;
+        }
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+        }
+        .move-icon {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <div>Current Interval: <span id="current-interval">0</span> seconds</div>
+        <div>Current Index: <span id="current-index">0</span></div>
+        <div>List Items Count: <span id="items-count">0</span></div>
+        <div>Timestamp: <span id="timestamp"></span></div>
+    </div>
+    <div id="data-container"></div>
+    <div class="navigation">
+        <button id="previous">Previous</button>
+        <button id="next">Next</button>
+    </div>
+
+    <script>
+        let data = [];
+        let currentIndex = 0;
+        let intervalId;
+        const intervalDuration = 5000;
+        let intervalCounter = 0;
+        let lastUpdatedTimestamp = '';
+
+        // Load data from local storage
+        function loadDataFromLocalStorage() {
+            const storedData = localStorage.getItem('data');
+            if (storedData) {
+                data = JSON.parse(storedData);
+            } else {
+                data = [];
+            }
+        }
+
+        // Save data to local storage
+        function saveDataToLocalStorage() {
+            localStorage.setItem('data', JSON.stringify(data));
+        }
+
+        // Render data on the page
+        function renderData() {
+            const container = document.getElementById('data-container');
+            container.innerHTML = ''; // Clear previous content
+
+            if (data.length > 0) {
+                data.forEach((item, index) => {
+                    const itemElement = document.createElement('div');
+                    itemElement.textContent = JSON.stringify(item.id, null, 2);
+                    if (index === currentIndex) {
+                        itemElement.classList.add('highlight');
+                        // Use timeout to ensure the scroll happens after rendering
+                        setTimeout(() => {
+                            itemElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 0);
+                    }
+                    container.appendChild(itemElement);
+                });
+            } else {
+                container.textContent = 'No data available';
+            }
+        }
+
+        // Update top bar information
+        function updateTopBar() {
+            document.getElementById('current-index').textContent = currentIndex;
+            document.getElementById('items-count').textContent = data.length;
+            document.getElementById('timestamp').textContent = lastUpdatedTimestamp;
+        }
+
+        // Initialize
+        loadDataFromLocalStorage();
+        renderData();
+        updateTopBar();
+
+        // Set up the web worker
+        const worker = new Worker('worker.js');
+        worker.postMessage({ apiUrl: 'https://jsonplaceholder.typicode.com/posts' });
+
+        worker.onmessage = function (e) {
+            if (e.data.updatedData) {
+                data = e.data.updatedData;
+                saveDataToLocalStorage();
+                lastUpdatedTimestamp = new Date().toLocaleString();
+                // Ensure currentIndex is valid
+                if (currentIndex >= data.length) {
+                    currentIndex = 0;
+                }
+                renderData();
+                updateTopBar();
+            }
+        };
+
+        // Event listeners for navigation buttons
+        document.getElementById('next').addEventListener('click', () => {
+            moveToNext();
+        });
+
+        document.getElementById('previous').addEventListener('click', () => {
+            moveToPrevious();
+        });
+
+        function moveToNext() {
+            if (data.length > 0) {
+                currentIndex = (currentIndex + 1) % data.length;
+                renderData();
+                updateTopBar();
+            }
+        }
+
+        function moveToPrevious() {
+            if (data.length > 0) {
+                currentIndex = (currentIndex - 1 + data.length) % data.length;
+                renderData();
+                updateTopBar();
+            }
+        }
+
+        // Automatically move to next item every intervalDuration seconds
+        intervalId = setInterval(() => {
+            moveToNext();
+            intervalCounter = (intervalCounter % (intervalDuration / 1000)) + 1;
+            document.getElementById('current-interval').textContent = intervalCounter;
+        }, 1000);
+
+        // Clean up the interval on window unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(intervalId);
+        });
+    </script>
+</body>
+</html>
